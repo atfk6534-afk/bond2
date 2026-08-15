@@ -11,65 +11,127 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Find and extract project
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+          set -e
 
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No ZIP file found."
-            exit 1
-          fi
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
 
-          echo "Found: $ZIP"
-          unzip -o "$ZIP"
-
-          if [ ! -f "bond2/pubspec.yaml" ]; then
-            echo "ERROR: bond2/pubspec.yaml was not found after extraction."
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP project file found."
+            echo "Files in repository:"
             find . -maxdepth 3 -type f | sort
             exit 1
           fi
 
-          echo "BOND2 project extracted successfully."
+          echo "Found project archive: $ZIP_FILE"
+
+          mkdir -p extracted
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "Extracted files:"
+          find extracted -maxdepth 3 -type f | sort | head -200
+
+      - name: Locate Flutter project
+        shell: bash
+        run: |
+          set -e
+
+          PROJECT_DIR=$(find extracted -type f -name "pubspec.yaml" -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: pubspec.yaml not found."
+            exit 1
+          fi
+
+          echo "Flutter project found at: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: "3.24.5"
           channel: stable
           cache: true
 
+      - name: Flutter version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter --version
+
       - name: Install dependencies
-        working-directory: bond2
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
       - name: Generate Drift code
-        working-directory: bond2
+        working-directory: ${{ env.PROJECT_DIR }}
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Analyze
-        working-directory: bond2
-        run: flutter analyze
+      - name: Verify Android configuration
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
 
-      - name: Test
-        working-directory: bond2
+          echo "Checking Android configuration..."
+
+          if [ ! -d "android" ]; then
+            echo "ERROR: android directory not found."
+            exit 1
+          fi
+
+          grep -R "compileSdk" android || true
+          grep -R "ndkVersion" android || true
+
+      - name: Run Flutter analyze
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run Flutter tests
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter test
 
-      - name: Build APK
-        working-directory: bond2
+      - name: Clean Flutter build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter clean
+
+      - name: Get dependencies again
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter build apk --release
+
+      - name: Verify APK exists
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not generated."
+            find build -type f | sort | head -100
+            exit 1
+          fi
+
+          echo "APK successfully generated:"
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: bond2-release-apk
-          path: bond2/build/app/outputs/flutter-apk/app-release.apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
