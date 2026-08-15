@@ -1,0 +1,5 @@
+unzip bond2-project.zip
+cd bond2
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter build apk --release
