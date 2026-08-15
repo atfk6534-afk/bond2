@@ -1,95 +1,118 @@
-Build BOND2 APK
+name: Build BOND2 APK
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch: {}
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Unzip project
-        run: unzip -o bond2-project.zip
+      # 2. Verify the project ZIP
+      - name: Verify project ZIP
+        run: |
+          test -f bond2-project.zip
+          echo "ZIP found:"
+          ls -lh bond2-project.zip
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+          echo "ZIP structure:"
+          unzip -l bond2-project.zip | head -80
+
+      # 3. Extract project
+      - name: Extract BOND2 project
+        run: |
+          rm -rf bond2
+          unzip -o bond2-project.zip
+
+          echo "Checking extracted project..."
+          test -f bond2/pubspec.yaml
+          test -f bond2/android/app/build.gradle
+          test -f bond2/android/settings.gradle
+
+          echo "Project extracted successfully."
+          find bond2/android -maxdepth 3 -type f | sort
+
+      # 4. Java 17
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
+      # 5. Flutter 3.24.5
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
-          channel: 'stable'
+          channel: stable
           cache: true
 
-      - name: Install dependencies
+      # 6. Show environment
+      - name: Show environment
+        working-directory: bond2
+        run: |
+          flutter --version
+          dart --version
+          java -version
+
+      # 7. Install dependencies
+      - name: Flutter pub get
         working-directory: bond2
         run: flutter pub get
 
-      - name: Generate Drift database code
+      # 8. Generate Drift code
+      - name: Generate Drift code
         working-directory: bond2
-        run: dart run build_runner build --delete-conflicting-outputs
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
 
-      - name: Run analyzer
+      # 9. Verify Android configuration
+      - name: Verify Android configuration
         working-directory: bond2
-        run: flutter analyze
-        continue-on-error: true
+        run: |
+          echo "=== android/app/build.gradle ==="
+          grep -nE "compileSdk|targetSdk|ndkVersion|minSdk" android/app/build.gradle
 
-      - name: Run unit tests
-        working-directory: bond2
-        run: flutter test
-        continue-on-error: true
+          echo "=== android/settings.gradle ==="
+          grep -nE "com.android.application|org.jetbrains.kotlin.android" android/settings.gradle
 
-      - name: Build release APK
-        working-directory: bond2
-        run: flutter build apk --release
+          echo "=== gradle wrapper ==="
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bond2-release-apk
-          path: bond2/build/app/outputs/flutter-apk/app-release.apk        working-directory: bond2
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Run analyzer
+      # 10. Analyze - MUST PASS
+      - name: Flutter analyze
         working-directory: bond2
         run: flutter analyze
-        continue-on-error: true
 
-      - name: Run unit tests
+      # 11. Tests - MUST PASS
+      - name: Flutter tests
         working-directory: bond2
         run: flutter test
-        continue-on-error: true
 
+      # 12. Build release APK
       - name: Build release APK
         working-directory: bond2
-        run: flutter build apk --release
+        run: flutter build apk --release --verbose
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bond2-release-apk
-          path: bond2/build/app/outputs/flutter-apk/app-release.apk
-      - name: Run analyzer
-        run: flutter analyze
-        continue-on-error: true
+      # 13. Verify APK
+      - name: Verify APK
+        working-directory: bond2
+        run: |
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          echo "APK successfully created:"
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Run unit tests
-        run: flutter test
-        continue-on-error: true
-
-      - name: Build release APK
-        run: flutter build apk --release
-
-      - name: Upload APK artifact
+      # 14. Upload APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: bond2-release-apk
           path: bond2/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
