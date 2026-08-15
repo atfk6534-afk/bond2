@@ -1,4 +1,4 @@
-name: Build BOND2 APK
+Build BOND2 APK
 
 on:
   push:
@@ -8,13 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: bond2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: unzip -o bond2-project.zip
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -30,11 +30,32 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        working-directory: bond2
         run: flutter pub get
 
       - name: Generate Drift database code
+        working-directory: bond2
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Run analyzer
+        working-directory: bond2
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run unit tests
+        working-directory: bond2
+        run: flutter test
+        continue-on-error: true
+
+      - name: Build release APK
+        working-directory: bond2
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bond2-release-apk
+          path: bond2/build/app/outputs/flutter-apk/app-release.apk
       - name: Run analyzer
         run: flutter analyze
         continue-on-error: true
