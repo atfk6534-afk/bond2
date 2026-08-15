@@ -55,6 +55,27 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bond2-release-apk
+          path: bond2/build/app/outputs/flutter-apk/app-release.apk        working-directory: bond2
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Run analyzer
+        working-directory: bond2
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run unit tests
+        working-directory: bond2
+        run: flutter test
+        continue-on-error: true
+
+      - name: Build release APK
+        working-directory: bond2
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bond2-release-apk
           path: bond2/build/app/outputs/flutter-apk/app-release.apk
       - name: Run analyzer
         run: flutter analyze
