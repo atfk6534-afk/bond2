@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bond2
 
     steps:
       - name: Checkout repository
@@ -47,4 +50,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bond2-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: bond2/build/app/outputs/flutter-apk/app-release.apk
